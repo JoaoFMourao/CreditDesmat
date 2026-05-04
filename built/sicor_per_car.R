@@ -30,6 +30,7 @@ df <- df %>%
     ano_safra,vl_parc_credito_real, is_basic
   )
   
+aux <- df %>% slice_sample(n = 10.000)
 
 ## Load property data ####
 
@@ -89,7 +90,8 @@ asvCar <- asvCar %>%
   #   tipo_imove == "IRU"
   # ) %>%
   select(cod_imovel,soma_desmat,uf,biome,criterio_new,apresenteASV,
-         area_total_ha) %>% 
+         area_total_ha, m_fiscal) %>% 
+  mutate(quinzeMf = ifelse(m_fiscal >= 15, 1,0)) %>% 
   distinct(cod_imovel, .keep_all = TRUE)
 
 
@@ -125,6 +127,43 @@ df <- df %>%
     )
   ) 
 
+# tmp <- df %>% group_by(monitored,ano_safra) %>% 
+#   dplyr::summarise(
+#     vl_parc_credito = sum(vl_parc_credito)/10^9,
+#     vl_parc_credito_real = sum(vl_parc_credito_real)/10^9,
+#     ops = n()
+#   )
+# 
+# tmp
+# 
+# tmp2 <- df %>% group_by(ano_safra) %>% 
+#   dplyr::summarise(
+#     vl_parc_credito = sum(vl_parc_credito)/10^9,
+#     vl_parc_credito_real = sum(vl_parc_credito_real)/10^9,
+#     ops = n()
+#   )
+# 
+# tmp2
+# 
+# tmp3 <- df %>% group_by(ano_safra, mes,ano) %>% 
+#   dplyr::summarise(
+#     vl_parc_credito = sum(vl_parc_credito)/10^9,
+#     vl_parc_credito_real = sum(vl_parc_credito_real)/10^9,
+#     ops = n()
+#   )
+# 
+# tmp3 %>% filter(ano_safra == "2024/2025")
+# 
+# tmp4 <- df %>% filter(ano_safra == "2024/2025") %>% 
+#   group_by(ano_safra, cd_fonte_recurso) %>% 
+#   dplyr::summarise(
+#     vl_parc_credito = sum(vl_parc_credito)/10^9,
+#     vl_parc_credito_real = sum(vl_parc_credito_real)/10^9,
+#     ops = n()
+#   ) %>% 
+#   left_join(
+#     fonteMonitor %>%  select(-monitored)
+#   ) %>% arrange(descricao)
 
 ### get operation level data on car that needs to present asv ####
 aux <- properties %>% 
@@ -140,7 +179,8 @@ df_asv <- properties %>%
   #   properties %>% filter(cod_imovel != "-1") %>% tail(10000)
   # )  %>% 
   filter(ref_bacen %in% df$ref_bacen) %>%
-  select(ref_bacen,nu_ordem,apresenteASV,cod_imovel, criterio_new) %>% 
+  select(ref_bacen,nu_ordem,apresenteASV,cod_imovel, criterio_new,
+         quinzeMf) %>% 
   mutate(
     apresenteASV =     ifelse(
       apresenteASV == "Apresente ASV",
@@ -163,6 +203,7 @@ df_asv <- properties %>%
   dplyr::summarise(
     apresenteASV = sum(apresenteASV, na.rm = T),
     n_car = sum(haCAR),
+    quinzeMf = sum(quinzeMf, na.rm = T),
     salvoBorda = ifelse(
       n_car == sum(salvoBorda),
       1,

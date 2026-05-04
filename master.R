@@ -42,6 +42,8 @@ source(file.path(root,"r2c","1_prepare_sicor_main.R"))
 # OUTPUT:
 # - clean/sicor_main_2018_2026_basic_complement.Rds
 
+root <- file.path("C:/Users", Sys.getenv("USERNAME"),
+                  "Documents", "baseMCR/code")
 source(file.path(root,"r2c" ,"2_merge_comp_basic.R"))
 
 # ============================================================================
@@ -55,6 +57,8 @@ source(file.path(root,"r2c" ,"2_merge_comp_basic.R"))
 # OUTPUT:
 # - output/INPEs_exercise/changedImpact.rds
 
+root <- file.path("C:/Users", Sys.getenv("USERNAME"),
+                  "Documents", "baseMCR/code")
 source(file.path(root, "INPEs_exersice.R"))
 
 
@@ -73,6 +77,8 @@ source(file.path(root, "INPEs_exersice.R"))
 # - built/credit_asv.Rds
 # - built/properties_asv.Rds
 
+root <- file.path("C:/Users", Sys.getenv("USERNAME"),
+                  "Documents", "baseMCR/code")
 source(file.path(root,"built" ,"sicor_per_car.R"))
 
 
@@ -90,6 +96,8 @@ source(file.path(root,"built" ,"sicor_per_car.R"))
 # - graficos
 # - CSVs auxiliares
 
+root <- file.path("C:/Users", Sys.getenv("USERNAME"),
+                  "Documents", "baseMCR/code")
 source(file.path(root, "desciptive.R"))
 
 # ============================================================================
