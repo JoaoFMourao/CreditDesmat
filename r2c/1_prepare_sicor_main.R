@@ -1,5 +1,26 @@
 ################################################################################
-# Time difference of 16.07017 mins
+# r2c/1_prepare_sicor_main.R
+# -----------------------------------------------------------------------------
+# Empilha os arquivos anuais brutos do SICOR (raw/sicor/*.gz) em uma unica
+# base consolidada. Padroniza tipos, normaliza nomes de colunas (clean_names)
+# e adiciona uma coluna `ano_base` com o ano de origem de cada linha.
+#
+# Tempo medio de execucao: ~16 min (depende do volume anual)
+#
+# Inputs
+# ------
+# - raw/sicor/SICOR_<ANO>.gz   (um arquivo por ano: 2018..2026)
+#
+# Outputs
+# -------
+# - clean/sicor_main_2018_2026.Rds
+#
+# Observacoes
+# -----------
+# * `CD_CONTRATO_STN` aparece como character em alguns anos e numerico em outros.
+#   Forcamos integer64 para compatibilidade. NAs sao mantidos.
+# * Nomes de colunas sao padronizados para snake_case via janitor::clean_names();
+#   `X.Ref_Bacen` vira `x_ref_bacen` e renomeamos para `ref_bacen`.
 ################################################################################
 
 # SETUP ------------------------------------------------------------------------

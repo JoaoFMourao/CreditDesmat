@@ -1,5 +1,41 @@
+# =============================================================================
+# sicor_per_car.R
+# -----------------------------------------------------------------------------
+# Junta SICOR (operacoes de credito rural) com a base de imoveis CAR (CAR ↔
+# operacao via SICOR_PROPRIEDADES) e com o resultado do cruzamento PRODES x CAR
+# (changedImpact.rds gerado em r2c/3_cross_prodes_car.R).
+#
+# Inputs
+# ------
+# - clean/sicor_main_2018_2026_basic_complement.Rds  (output do passo 2)
+# - raw/sicor/complementos/SICOR_PROPRIEDADES.gz     (link contrato <-> CAR)
+# - output/INPEs_exercise/changedImpact.rds          (CAR + desmat + biome)
+# - raw/sicor/complementos/Fontes MCR 6-1-2 e 6-7-7.csv (linhas monitoradas)
+#
+# Outputs
+# -------
+# - built/asvCar_credit.Rds   (1 linha por CAR; flag tomou_credito + desmat)
+# - built/credit_asv.Rds      (1 linha por contrato SICOR + dimensoes p/ analise)
+# - built/properties_asv.Rds  (1 linha por (contrato, CAR); link bruto)
+# - built/asvCar_credit.csv / credit_asv.csv / properties_asv.csv (samples csv)
+#
+# Variaveis novas geradas para o output municipal (item 4) e Shiny (item 5)
+# -------------------------------------------------------------------------
+# - status_car  -> categoriza cada contrato:
+#                   "Sigiloso"           : informacao do CAR e' sigilosa
+#                   "CAR nao informado"  : SICOR sem cod_imovel
+#                   "CAR fora da base"   : cod_imovel informado mas ausente
+#                                          do shapefile lista_mcr (nao foi
+#                                          possivel cruzar com PRODES)
+#                   "CAR na base"        : ao menos um cod_imovel cruzado
+# - faixa_mf    -> faixa de modulos fiscais (apenas quando "CAR na base"):
+#                   "<4 MF" / "4-15 MF" / ">=15 MF"
+#                  Calculada a partir do MAIOR m_fiscal entre os CARs do
+#                  contrato (regra de classificacao mais conservadora).
+# =============================================================================
+
 # SETUP ------------------------------------------------------------------------
-rm(list=ls())
+rm(list = ls())
 gc()
 
 strt.time <- Sys.time()
@@ -12,355 +48,215 @@ library(lubridate)
 root <- file.path("C:/Users", Sys.getenv("USERNAME"),
                   "Documents", "baseMCR/dados")
 
-# Remove Scientific Notation
 options(scipen = 999)
 
-# Sources
-#https://www.bcb.gov.br/estabilidadefinanceira/creditorural?modalAberto=tabelas_sicor
 
+# LOAD DATA --------------------------------------------------------------------
 
-#    Load SICOR data files -----------------------------------------------------
+## Base SICOR completa ja com municipio + IPCA (passo 2)
+df <- readRDS(file.path(root, "clean", "sicor_main_2018_2026_basic_complement.Rds"))
 
-## Load full database ####
-df <- readRDS(file.path(root,"clean", "sicor_main_2018_2026_basic_complement.Rds"))
-
-df <- df %>% 
+## Slim das colunas relevantes para o restante da analise.
+## Mantemos:
+##   - chaves (ref_bacen, nu_ordem)
+##   - tempo (ano_base, ano, mes, ano_safra)
+##   - valores (vl_parc_credito, vl_parc_credito_real)
+##   - dimensoes do contrato pedidas para os outputs do item 4:
+##       cd_fonte_recurso, cd_programa, cd_subprograma, cd_modalidade,
+##       cd_tipo_pessoa
+##   - localizacao (cd_municipio_ibge_cc) -- vem do complemento basico
+##   - flag is_basic (esta no complemento basico?)
+df <- df %>%
   select(
-    ref_bacen, nu_ordem, ano_base, cd_fonte_recurso,vl_parc_credito, ano,mes,
-    ano_safra,vl_parc_credito_real, is_basic
+    ref_bacen, nu_ordem, ano_base,
+    cd_fonte_recurso, cd_programa, cd_subprograma, cd_modalidade,
+    cd_tipo_pessoa,
+    cd_municipio_ibge_cc,
+    vl_parc_credito, vl_parc_credito_real,
+    ano, mes, ano_safra,
+    is_basic
   )
-  
-aux <- df %>% slice_sample(n = 10.000)
 
-## Load property data ####
+## Tabela de propriedades (link contrato <-> CAR) -----------------------------
+input <- file.path(root, "raw/sicor", "complementos")
 
-input <- file.path(root,"raw/sicor",
-                   "complementos")
+properties <- read.delim(
+  file.path(input, "SICOR_PROPRIEDADES.gz"),
+  sep = ";",
+  header = TRUE,
+  encoding = "UTF-8"
+)
 
-properties <-  read.delim(file.path(input, "SICOR_PROPRIEDADES.gz"),
-                     sep = ";",
-                     header = TRUE,
-                     encoding = "UTF-8")  
+## Saida do cruzamento PRODES x CAR (passo 3)
+asvCar <- readRDS(
+  file.path(root, "output", "INPEs_exercise", "changedImpact.rds")
+)
 
-## Load asv-car data ####
-
-asvCar <- readRDS(file.path(root,"output","INPEs_exercise",
-                            "changedImpact.rds"))
-
-## Load linhas Monitoradas ####
-
+## Linhas/fontes monitoradas (universo de credito controlado/direcionado)
 fonteMonitor <- fread(
-  file.path(
-    input,"Fontes MCR 6-1-2 e 6-7-7.csv"
-    ),  encoding = "Latin-1"
-  )
+  file.path(input, "Fontes MCR 6-1-2 e 6-7-7.csv"),
+  encoding = "Latin-1"
+)
 
 
-# DATA HANDLING ####
-## prep properties ####
-properties <- properties %>% 
-  clean_names()%>%
-  rename(ref_bacen = x_ref_bacen,
-         cod_imovel = cd_car) %>% 
-  mutate(
-    tookCredit = "Tomou Credito"
-  ) #%>% 
-  # filter(cod_imovel != -1)
+# DATA HANDLING ----------------------------------------------------------------
 
-## check for duplicates ####
-# Check number of contracts in the main file
-# properties %>%
-#   distinct(ref_bacen, nu_ordem,cod_imovel) %>%
-#   # filter(cod_imovel != -1) %>%
-#   nrow() == length(properties$ref_bacen)# DUPLICATES
-
-#check for duplicates in asvCar file
-# asvCar %>% 
-#   distinct(cod_imovel) %>% 
-#   nrow() == length(asvCar$cod_imovel)
-
-## remove "-" form codigo car ####
-asvCar <- asvCar %>% 
-  mutate(
-    cod_imovel = str_remove_all(cod_imovel,"-"),
-    apresenteASV = "Apresente ASV"
+## Properties: padroniza nomes e marca os contratos que tomaram credito --------
+properties <- properties %>%
+  clean_names() %>%
+  rename(
+    ref_bacen  = x_ref_bacen,
+    cod_imovel = cd_car
   ) %>%
-  # filter(
-  #   condicao != "Cancelado por decisão administrativa",
-  #   tipo_imove == "IRU"
-  # ) %>%
-  select(cod_imovel,soma_desmat,uf,biome,criterio_new,apresenteASV,
-         area_total_ha, m_fiscal) %>% 
-  mutate(quinzeMf = ifelse(m_fiscal >= 15, 1,0)) %>% 
+  mutate(tookCredit = "Tomou Credito")
+
+## asvCar: limpa cod_imovel (a base CAR usa hifens, properties nao) e marca
+## que o CAR esta "na base" (i.e., cruzou com PRODES nesta rodada)
+asvCar <- asvCar %>%
+  mutate(
+    cod_imovel    = str_remove_all(cod_imovel, "-"),
+    apresenteASV  = "Apresente ASV",
+    in_base_car   = 1L
+  ) %>%
+  select(cod_imovel, soma_desmat, uf, biome, criterio_new,
+         apresenteASV, area_total_ha, m_fiscal, in_base_car) %>%
+  mutate(quinzeMf = ifelse(m_fiscal >= 15, 1, 0)) %>%
   distinct(cod_imovel, .keep_all = TRUE)
 
-
-## clean fonte monitor ####
-fonteMonitor <- fonteMonitor %>% 
-  clean_names() %>% 
-  rename(
-    cd_fonte_recurso = number_codigo
-  ) %>% 
-  mutate(
-    monitored = 1
-  )
+## Fontes monitoradas: padroniza chave de join
+fonteMonitor <- fonteMonitor %>%
+  clean_names() %>%
+  rename(cd_fonte_recurso = number_codigo) %>%
+  mutate(monitored = 1)
 
 
-# MERGE ####
-## merge properties with car that need to present asv ####
-properties <- properties %>% 
-  left_join(asvCar, by = "cod_imovel") 
+# MERGE ------------------------------------------------------------------------
+
+## (contrato, CAR) <-> dados do CAR (desmat, bioma, mf, status)
+properties <- properties %>%
+  left_join(asvCar, by = "cod_imovel")
 
 gc()
 
-### get monitored data ####
-df <- df %>% 
-  left_join(
-    fonteMonitor,
-    by = "cd_fonte_recurso"
-  ) %>% 
-  mutate(
-    monitored = ifelse(
-      is.na(monitored),
-      0,
-      1
-    )
-  ) 
-
-# tmp <- df %>% group_by(monitored,ano_safra) %>% 
-#   dplyr::summarise(
-#     vl_parc_credito = sum(vl_parc_credito)/10^9,
-#     vl_parc_credito_real = sum(vl_parc_credito_real)/10^9,
-#     ops = n()
-#   )
-# 
-# tmp
-# 
-# tmp2 <- df %>% group_by(ano_safra) %>% 
-#   dplyr::summarise(
-#     vl_parc_credito = sum(vl_parc_credito)/10^9,
-#     vl_parc_credito_real = sum(vl_parc_credito_real)/10^9,
-#     ops = n()
-#   )
-# 
-# tmp2
-# 
-# tmp3 <- df %>% group_by(ano_safra, mes,ano) %>% 
-#   dplyr::summarise(
-#     vl_parc_credito = sum(vl_parc_credito)/10^9,
-#     vl_parc_credito_real = sum(vl_parc_credito_real)/10^9,
-#     ops = n()
-#   )
-# 
-# tmp3 %>% filter(ano_safra == "2024/2025")
-# 
-# tmp4 <- df %>% filter(ano_safra == "2024/2025") %>% 
-#   group_by(ano_safra, cd_fonte_recurso) %>% 
-#   dplyr::summarise(
-#     vl_parc_credito = sum(vl_parc_credito)/10^9,
-#     vl_parc_credito_real = sum(vl_parc_credito_real)/10^9,
-#     ops = n()
-#   ) %>% 
-#   left_join(
-#     fonteMonitor %>%  select(-monitored)
-#   ) %>% arrange(descricao)
-
-### get operation level data on car that needs to present asv ####
-aux <- properties %>% 
-  filter(cod_imovel == "-1") %>%  head(10000) %>%
-  bind_rows(
-    properties %>% filter(cod_imovel != "-1") %>% head(10000)
-  ) 
+## Marca contratos cuja fonte de recurso e' monitorada (controlado/direcionado)
+df <- df %>%
+  left_join(fonteMonitor, by = "cd_fonte_recurso") %>%
+  mutate(monitored = ifelse(is.na(monitored), 0, 1))
 
 
-df_asv <- properties %>% 
-  #   filter(cod_imovel == "-1") %>%  tail(10000) %>%
-  # bind_rows(
-  #   properties %>% filter(cod_imovel != "-1") %>% tail(10000)
-  # )  %>% 
+# AGGREGATE: 1 linha por contrato (com flags do CAR) ---------------------------
+# Para cada (ref_bacen, nu_ordem) contamos:
+#   n_car_total    : numero de linhas em properties (qualquer cod_imovel)
+#   n_car_id       : numero de CARs informados (cod_imovel != "-1")
+#   n_car_in_base  : numero de CARs que cruzaram com lista_mcr
+#   n_apresenteASV : numero de CARs que cairam na regra "Apresente ASV"
+#   max_m_fiscal   : maior modulo fiscal entre os CARs do contrato
+#   salvoBorda     : 1 se TODOS os CARs do contrato foram salvos pela borda
+
+df_asv <- properties %>%
   filter(ref_bacen %in% df$ref_bacen) %>%
-  select(ref_bacen,nu_ordem,apresenteASV,cod_imovel, criterio_new,
-         quinzeMf) %>% 
+  select(ref_bacen, nu_ordem, apresenteASV, cod_imovel, criterio_new,
+         quinzeMf, in_base_car, m_fiscal) %>%
   mutate(
-    apresenteASV =     ifelse(
-      apresenteASV == "Apresente ASV",
-      1,
-      0
-    ),
-    haCAR = ifelse(
-      cod_imovel == "-1",
-      0,
-      1
-    ),
-    
-    salvoBorda = ifelse(
-      criterio_new == "Salvo pela borda",
-      1,
-      0
-    )
-  ) %>% 
-  group_by(ref_bacen, nu_ordem) %>% 
-  dplyr::summarise(
-    apresenteASV = sum(apresenteASV, na.rm = T),
-    n_car = sum(haCAR),
-    quinzeMf = sum(quinzeMf, na.rm = T),
-    salvoBorda = ifelse(
-      n_car == sum(salvoBorda),
-      1,
-      0
-    )
-  ) 
+    asv_flag    = ifelse(!is.na(apresenteASV) & apresenteASV == "Apresente ASV", 1, 0),
+    haCAR       = ifelse(cod_imovel == "-1", 0, 1),
+    in_base_car = ifelse(is.na(in_base_car), 0, in_base_car),
+    salvoBorda  = ifelse(!is.na(criterio_new) & criterio_new == "Salvo pela borda", 1, 0)
+  ) %>%
+  group_by(ref_bacen, nu_ordem) %>%
+  summarise(
+    n_car_total    = n(),
+    n_car_id       = sum(haCAR),
+    n_car_in_base  = sum(in_base_car),
+    n_apresenteASV = sum(asv_flag),
+    quinzeMf       = sum(quinzeMf, na.rm = TRUE),
+    max_m_fiscal   = suppressWarnings(max(m_fiscal, na.rm = TRUE)),
+    salvoBorda     = ifelse(n_car_id == sum(salvoBorda), 1, 0),
+    .groups = "drop"
+  ) %>%
+  mutate(max_m_fiscal = ifelse(is.infinite(max_m_fiscal), NA_real_, max_m_fiscal))
 
 gc()
 
-# Monitored data ####
-gc()
+
+# JOIN no df principal e construcao das variaveis status_car / faixa_mf -------
 df <- df %>%
   filter(
-    ano_safra %in%
-      c("2020/2021","2021/2022","2022/2023","2023/2024",
-        "2024/2025")
+    ano_safra %in% c("2020/2021", "2021/2022", "2022/2023", "2023/2024",
+                     "2024/2025")
   ) %>%
-  left_join(
-    df_asv,
-    by = join_by(ref_bacen, nu_ordem)
-  )   %>% 
+  left_join(df_asv, by = c("ref_bacen", "nu_ordem")) %>%
   mutate(
+    # status_car: 4 categorias mutuamente exclusivas
+    status_car = case_when(
+      is.na(n_car_total)   ~ "Sigiloso",
+      n_car_id == 0        ~ "CAR nao informado",
+      n_car_in_base == 0   ~ "CAR fora da base",
+      n_car_in_base > 0    ~ "CAR na base"
+    ),
+
+    # mantem o rotulo original "apresenteASV" para retrocompat com desciptive.R
     apresenteASV = case_when(
-      n_car == 0 ~                     "Sem CAR associado",
-      n_car != 0 & apresenteASV > 0 ~  "Apresente ASV",
-      n_car != 0 & apresenteASV == 0 ~ "Sem desmatamento",
-      is.na(apresenteASV)            ~ "Dado sigiloso"
+      status_car == "Sigiloso"            ~ "Dado sigiloso",
+      status_car == "CAR nao informado"   ~ "Sem CAR associado",
+      status_car == "CAR fora da base"    ~ "CAR fora da base",
+      status_car == "CAR na base" & n_apresenteASV > 0  ~ "Apresente ASV",
+      status_car == "CAR na base" & n_apresenteASV == 0 ~ "Sem desmatamento"
+    ),
+
+    # faixa_mf: somente quando o CAR esta na base (caso contrario nao temos MF)
+    faixa_mf = case_when(
+      status_car != "CAR na base" ~ NA_character_,
+      max_m_fiscal <  4           ~ "<4 MF",
+      max_m_fiscal <  15          ~ "4-15 MF",
+      max_m_fiscal >= 15          ~ ">=15 MF",
+      TRUE                        ~ NA_character_
     )
   )
 
 
- 
-unique.prop <-  properties %>% 
-  select(cod_imovel,tookCredit) %>% 
+# Resumos rapidos para sanity check -------------------------------------------
+summary_status_car <- df %>%
+  group_by(ano_safra, status_car) %>%
+  summarise(
+    n_ops      = n(),
+    credito_bi = sum(vl_parc_credito_real, na.rm = TRUE) / 1e9,
+    .groups = "drop"
+  )
+
+print(summary_status_car)
+
+
+# Marca CAR a CAR quem tomou credito (para a base asvCar)
+unique.prop <- properties %>%
+  select(cod_imovel, tookCredit) %>%
   distinct()
 
-## merge asvCAR with properties ####
-
-asvCar <- asvCar %>% 
-  left_join(unique.prop, by = "cod_imovel") %>% 
+asvCar <- asvCar %>%
+  left_join(unique.prop, by = "cod_imovel") %>%
   mutate(
-    tookCredit = ifelse(
-      is.na(tookCredit),
-      "Nao afetado",
-      tookCredit
-    ) 
-  )
-
-summaryAsvCar <- asvCar %>% 
-  group_by(tookCredit) %>% 
-  dplyr::summarise(
-    desmat_km = round(sum(soma_desmat)/100),
-    properties = n(),
-    area_ha = sum(area_total_ha)
-  ) 
-
-summaryDf <- df %>% 
-  filter(ano_safra == "2024/2025") %>% 
-  group_by(monitored, apresenteASV) %>%
-    dplyr::summarise(
-      credit_bi = sum(vl_parc_credito)/10^9
-    )  %>% 
-  pivot_wider(
-    names_from = apresenteASV,
-    values_from = credit_bi)
-    
-
-summaryDf_ops <- df %>% 
-  filter(ano_safra == "2024/2025") %>% 
-  group_by(monitored, apresenteASV) %>%
-  dplyr::summarise(
-    ops = n()
-  ) %>% 
-  pivot_wider(
-    names_from = apresenteASV,
-    values_from = ops)
-
-  
-# SAVE FILES ####
-  
-  dir.create(file.path(root,"built"))
-  
-  saveRDS(asvCar, file.path(root,"built", "asvCar_credit.Rds"))
-  
-  saveRDS(df, file.path(root,"built", "credit_asv.Rds"))
-  
-  saveRDS(properties, file.path(root,"built", "properties_asv.Rds"))  
-  
-  #
-  write.csv(asvCar,
-            file.path(root,"built", "asvCar_credit.csv"),
-            row.names = FALSE)
-  
-  write.csv(df %>% arrange(-vl_parc_credito_real) %>%  head(1000),
-            file.path(root,"built", "credit_asv.csv"),
-            row.names = FALSE)
-  
-  write.csv(properties  %>%  head(1000),
-            file.path(root,"built", "properties_asv.csv"),
-            row.names = FALSE)
-  
-  
-  Sys.time() - strt.time
-
-# %>% 
-#   ungroup() %>% 
-#   mutate(
-#     desmat_shr = round((desmat_km/sum(desmat_km))*100,0),
-#     properties_shr = round((properties/sum(properties))*100,0)
-#   ) %>% 
-#   select(tookCredit,properties,properties_shr,desmat_km,desmat_shr)
-
-asvCar %>% 
-  group_by(tookCredit) %>% 
-  dplyr::summarise(
-    desmat_km = sum(soma_desmat)/100,
-    properties = n()
-  ) %>% 
-  ungroup() %>% 
-  mutate(
-    properties_shr = round(100*properties/length(unique.prop$tookCredit),2)
+    tookCredit = ifelse(is.na(tookCredit), "Nao afetado", tookCredit)
   )
 
 
-asvCar %>% 
-  group_by(tookCredit,biome) %>% 
-  dplyr::summarise(
-    desmat_km = sum(soma_desmat)/100,
-    properties = n()
-  ) %>% 
-  group_by(tookCredit) %>% 
-  mutate(
-    desmat_shr = round((desmat_km/sum(desmat_km))*100,0),
-    properties_shr = round((properties/sum(properties))*100,0)
-  ) %>% 
-  select(tookCredit,biome,properties,properties_shr,desmat_km,desmat_shr) %>% 
-  arrange(biome) #%>% 
-  # filter(tookCredit == "Tomou Credito") %>% 
-  # arrange(-p)
+# SAVE FILES -------------------------------------------------------------------
+dir.create(file.path(root, "built"), showWarnings = FALSE)
 
+saveRDS(asvCar,     file.path(root, "built", "asvCar_credit.Rds"))
+saveRDS(df,         file.path(root, "built", "credit_asv.Rds"))
+saveRDS(properties, file.path(root, "built", "properties_asv.Rds"))
 
-# asvCar %>% 
-#   group_by(tookCredit, tipo_imove) %>% 
-#   dplyr::summarise(
-#     desmat_km = sum(soma_desmat)/100,
-#     properties = n()
-#   ) %>% 
-#   ungroup() %>% 
-#   mutate(
-#     desmat_shr = round((desmat_km/sum(desmat_km))*100,0),
-#     properties_shr = round((properties/sum(properties))*100,0)
-#   ) %>% 
-#   select(tookCredit,tipo_imove,properties,properties_shr,desmat_km,desmat_shr) %>% 
-#   arrange(tipo_imove)
+# Samples em csv para inspecao
+write.csv(asvCar,
+          file.path(root, "built", "asvCar_credit.csv"),
+          row.names = FALSE)
 
+write.csv(df %>% arrange(-vl_parc_credito_real) %>% head(1000),
+          file.path(root, "built", "credit_asv_sample.csv"),
+          row.names = FALSE)
 
-# SAVE DATA ####
+write.csv(properties %>% head(1000),
+          file.path(root, "built", "properties_asv_sample.csv"),
+          row.names = FALSE)
 
-
-
+cat("[OK] tempo total:", format(Sys.time() - strt.time), "\n")

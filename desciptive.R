@@ -1,3 +1,22 @@
+################################################################################
+# desciptive.R
+# -----------------------------------------------------------------------------
+# Analise descritiva final do projeto. Le os RDS construidos no passo
+# `built/sicor_per_car.R` (asvCar_credit, credit_asv) e gera tabelas Excel,
+# CSVs e graficos PNG cobrindo as analises 1 a 9:
+#   1) tamanho da base CAR x CAR Brasil
+#   2) borda 60m: "Apresente ASV" vs "Salvo pela borda"
+#   3) credito monitorado por ano-safra
+#   4) dentro do monitorado, situacao do CAR
+#   5) quanto dos CARs da nossa base tomam credito
+#   6) ticket medio por grupo (e por modulo fiscal)
+#   7) credito que NAO sera afetado pela nova norma
+#   8) operacoes afetadas pela nova norma (universo observavel)
+#   9) detalhamentos por bioma/UF
+#
+# Outputs sao escritos em <root>/output/analysis_asv_credit/.
+################################################################################
+
 # SETUP ------------------------------------------------------------------------
 # limpa ambiente e memoria
 rm(list=ls())

@@ -1,3 +1,10 @@
+################################################################################
+# descriptive_2.R
+# -----------------------------------------------------------------------------
+# Snippet auxiliar (analise rapida): conta cadastros, area total e desmat por
+# `tookCredit` (Tomou Credito vs Nao afetado) e gera o grafico `g_credit_flag`.
+# Nao e' chamado pelo master.R; usado em analises pontuais.
+################################################################################
 
 tab_credit_flag_brasil <- asvCar %>%
   group_by(tookCredit) %>%

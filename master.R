@@ -1,16 +1,19 @@
 # MASTER SCRIPT ---------------------------------------------------------------
 # Projeto: Analise MCR / Credito Rural / CAR
-# Autor: Joao Mourao
-# Objetivo: rodar pipeline completo do projeto
+# Autor:   Joao Mourao
+# Objetivo: rodar o pipeline completo do projeto
 
 # ---------------------------------------------------------------------------
 # ORDEM DE EXECUCAO
 # ---------------------------------------------------------------------------
-# 1) preparar base SICOR (dados brutos → base consolidada)
-# 2) merge com complementos (municipio + inflacao)
-# 3) merge com CAR e ASV
-# 4) exercicio da borda (INPE)
-# 5) analise descritiva final
+# 1) preparar base SICOR              (raw -> consolidada)
+# 2) merge com complemento basico     (+ municipio, IPCA, ano_safra)
+# 3) cruzar PRODES x CAR              (regra da borda 60m + auditoria)
+# 4) merge SICOR x CAR/ASV            (1 linha por contrato; status_car)
+# 5) output municipal long            (item 4 da revisao do projeto)
+# 6) analise descritiva final         (tabelas + graficos)
+# 7) (opcional) Shiny dashboard       (shiny/app.R)
+# 8) (TODO)  desmat sem sobreposicao  (item 6 da revisao -- pendente)
 
 # ---------------------------------------------------------------------------
 # CAMINHO BASE
@@ -21,87 +24,78 @@ root <- file.path("C:/Users", Sys.getenv("USERNAME"),
 # ============================================================================
 # 1) PREPARAR BASE SICOR
 # ============================================================================
-
-# INPUT:
-# - raw/sicor/*.gz (arquivos anuais do SICOR)
-#
-# OUTPUT:
-# - clean/sicor_main_2018_2026.Rds
-
-source(file.path(root,"r2c","1_prepare_sicor_main.R"))
+# INPUT:  raw/sicor/SICOR_<ANO>.gz
+# OUTPUT: clean/sicor_main_2018_2026.Rds
+source(file.path(root, "r2c", "1_prepare_sicor_main.R"))
 
 # ============================================================================
 # 2) MERGE COM COMPLEMENTO BASICO + IPCA
 # ============================================================================
-
-# INPUT:
-# - clean/sicor_main_2018_2026.Rds
-# - raw/sicor/complementos/SICOR_COMPLEMENTO_OPERACAO_BASICA.gz
-# - raw/ipeadata.csv (inflacao)
-#
-# OUTPUT:
-# - clean/sicor_main_2018_2026_basic_complement.Rds
-
+# INPUT:  clean/sicor_main_2018_2026.Rds
+#         raw/sicor/complementos/SICOR_COMPLEMENTO_OPERACAO_BASICA.gz
+#         raw/ipeadata[<data>].csv
+# OUTPUT: clean/sicor_main_2018_2026_basic_complement.Rds
 root <- file.path("C:/Users", Sys.getenv("USERNAME"),
                   "Documents", "baseMCR/code")
-source(file.path(root,"r2c" ,"2_merge_comp_basic.R"))
+source(file.path(root, "r2c", "2_merge_comp_basic.R"))
 
 # ============================================================================
-# 3) EXERCICIO DE BORDA (INPE)
+# 3) CRUZAMENTO PRODES x CAR (antigo INPEs_exersice.R)
 # ============================================================================
-
-# INPUT:
-# - raw/lista_mcr_biomas_VF.gdb
-# - raw/prodes_mcr.gdb
-#
-# OUTPUT:
-# - output/INPEs_exercise/changedImpact.rds
-
+# INPUT:  raw/lista_mcr_biomas_VF.gdb   (atualizado mai/2026 - SharePoint MMA)
+#         raw/prodes_mcr.gdb
+# OUTPUT: output/INPEs_exercise/changedImpact.rds
+#         output/INPEs_exercise/audit_desmat_per_car.csv         <- item 2
+#         output/INPEs_exercise/audit_desmat_per_car_resumo.csv  <- item 2
 root <- file.path("C:/Users", Sys.getenv("USERNAME"),
                   "Documents", "baseMCR/code")
-source(file.path(root, "INPEs_exersice.R"))
-
+source(file.path(root, "r2c", "3_cross_prodes_car.R"))
 
 # ============================================================================
-# 4) MERGE COM CAR + ASV + MONITORAMENTO
+# 4) MERGE SICOR x CAR/ASV/MONITORAMENTO
 # ============================================================================
-
-# INPUT:
-# - clean/sicor_main_2018_2026_basic_complement.Rds
-# - raw/sicor/complementos/SICOR_PROPRIEDADES.gz
-# - output/INPEs_exercise/changedImpact.rds (ASV + CAR)
-# - raw/Fontes MCR.csv (linhas monitoradas)
-#
-# OUTPUT:
-# - built/asvCar_credit.Rds
-# - built/credit_asv.Rds
-# - built/properties_asv.Rds
-
+# INPUT:  clean/sicor_main_2018_2026_basic_complement.Rds
+#         raw/sicor/complementos/SICOR_PROPRIEDADES.gz
+#         output/INPEs_exercise/changedImpact.rds
+#         raw/sicor/complementos/Fontes MCR 6-1-2 e 6-7-7.csv
+# OUTPUT: built/asvCar_credit.Rds
+#         built/credit_asv.Rds          (com status_car + faixa_mf)
+#         built/properties_asv.Rds
 root <- file.path("C:/Users", Sys.getenv("USERNAME"),
                   "Documents", "baseMCR/code")
-source(file.path(root,"built" ,"sicor_per_car.R"))
-
+source(file.path(root, "built", "sicor_per_car.R"))
 
 # ============================================================================
-# 5) ANALISE DESCRITIVA FINAL
+# 5) OUTPUT MUNICIPAL LONG (item 4 da revisao)
 # ============================================================================
+# INPUT:  built/credit_asv.Rds
+#         built/properties_asv.Rds
+# OUTPUT: output/long/credit_long_municipal.csv
+#         output/long/credit_long_municipal.xlsx
+root <- file.path("C:/Users", Sys.getenv("USERNAME"),
+                  "Documents", "baseMCR/code")
+source(file.path(root, "r2c", "4_municipal_long_output.R"))
 
-# INPUT:
-# - built/asvCar_credit.Rds
-# - built/credit_asv.Rds
-# - raw/dados_car_brasil.csv
-#
-# OUTPUT:
-# - tabelas Excel (secao 1 a 5)
-# - graficos
-# - CSVs auxiliares
-
+# ============================================================================
+# 6) ANALISE DESCRITIVA FINAL
+# ============================================================================
+# INPUT:  built/asvCar_credit.Rds
+#         built/credit_asv.Rds
+#         raw/dados_car_brasil.csv
+# OUTPUT: tabelas Excel (secao 1 a 9) + graficos PNG + CSVs auxiliares
 root <- file.path("C:/Users", Sys.getenv("USERNAME"),
                   "Documents", "baseMCR/code")
 source(file.path(root, "desciptive.R"))
 
 # ============================================================================
+# 7) (OPCIONAL) DASHBOARD SHINY
+# ============================================================================
+# Para subir o dashboard interativo:
+#   shiny::runApp(file.path(root, "shiny"))
+# Por padrao le o CSV gerado no passo 5; pode ser sobrescrito via env var
+# CREDITDESMAT_ROOT.
+
+# ============================================================================
 # FIM
 # ============================================================================
-
 cat("Pipeline finalizado com sucesso\n")

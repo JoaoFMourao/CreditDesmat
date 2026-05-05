@@ -1,6 +1,25 @@
 ################################################################################
-# 
+# r2c/2_merge_comp_basic.R
+# -----------------------------------------------------------------------------
+# Junta a base SICOR consolidada com o complemento basico (que traz municipio
+# e outros campos) e adiciona a serie do IPCA (Ipeadata) para deflacionar os
+# valores nominais a precos de dez/2025.
 #
+# Cria duas variaveis fundamentais:
+#   * ano_safra  -- comeca em julho do ano N e termina em junho de N+1
+#   * vl_parc_credito_real  -- valor parcela em R$ dez/2025
+#
+# Inputs
+# ------
+# - clean/sicor_main_2018_2026.Rds
+# - raw/sicor/complementos/SICOR_COMPLEMENTO_OPERACAO_BASICA.gz
+# - raw/ipeadata[<data>].csv  (IPCA mensal)
+#
+# Output
+# ------
+# - clean/sicor_main_2018_2026_basic_complement.Rds
+#
+# Fonte: https://www.bcb.gov.br/estabilidadefinanceira/creditorural?modalAberto=tabelas_sicor
 ################################################################################
 
 # SETUP ------------------------------------------------------------------------
