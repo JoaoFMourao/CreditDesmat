@@ -57,8 +57,10 @@ library(readr)
 sf::sf_use_s2(FALSE)
 
 ## paths --------------------------------------------------------------------
-input  <- file.path("baseMCR", "dados", "raw")
-output <- file.path("baseMCR", "dados", "output", "INPEs_exercise")
+input  <- file.path("C:/Users", Sys.getenv("USERNAME"),
+                    "Documents", "baseMCR", "dados", "raw")
+output <- file.path("C:/Users", Sys.getenv("USERNAME"),
+                    "Documents", "baseMCR", "dados", "output", "INPEs_exercise")
 
 if (!dir.exists(output)) {
   dir.create(output, recursive = TRUE)

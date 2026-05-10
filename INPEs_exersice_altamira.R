@@ -21,8 +21,10 @@ library(purrr)
 sf::sf_use_s2(TRUE)
 
 ## config relative paths ####
-input  <- file.path("baseMCR", "dados", "raw")
-output <- file.path("baseMCR", "dados", "output", "INPEs_exercise","Altamira")
+input  <- file.path("C:/Users", Sys.getenv("USERNAME"),
+                    "Documents", "baseMCR", "dados", "raw")
+output <- file.path("C:/Users", Sys.getenv("USERNAME"),
+                    "Documents", "baseMCR", "dados", "output", "INPEs_exercise", "Altamira")
 
 if (!dir.exists(output)) {
   dir.create(output, recursive = TRUE)

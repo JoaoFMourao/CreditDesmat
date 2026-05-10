@@ -19,7 +19,7 @@
 # CAMINHO BASE
 # ---------------------------------------------------------------------------
 root <- file.path("C:/Users", Sys.getenv("USERNAME"),
-                  "Documents", "baseMCR/code")
+                  "Documents", "GitHub", "CreditDesmat")
 
 # ============================================================================
 # 1) PREPARAR BASE SICOR
@@ -36,7 +36,7 @@ source(file.path(root, "r2c", "1_prepare_sicor_main.R"))
 #         raw/ipeadata[<data>].csv
 # OUTPUT: clean/sicor_main_2018_2026_basic_complement.Rds
 root <- file.path("C:/Users", Sys.getenv("USERNAME"),
-                  "Documents", "baseMCR/code")
+                  "Documents", "GitHub", "CreditDesmat")
 source(file.path(root, "r2c", "2_merge_comp_basic.R"))
 
 # ============================================================================
@@ -48,7 +48,7 @@ source(file.path(root, "r2c", "2_merge_comp_basic.R"))
 #         output/INPEs_exercise/audit_desmat_per_car.csv         <- item 2
 #         output/INPEs_exercise/audit_desmat_per_car_resumo.csv  <- item 2
 root <- file.path("C:/Users", Sys.getenv("USERNAME"),
-                  "Documents", "baseMCR/code")
+                  "Documents", "GitHub", "CreditDesmat")
 source(file.path(root, "r2c", "3_cross_prodes_car.R"))
 
 # ============================================================================
@@ -62,7 +62,7 @@ source(file.path(root, "r2c", "3_cross_prodes_car.R"))
 #         built/credit_asv.Rds          (com status_car + faixa_mf)
 #         built/properties_asv.Rds
 root <- file.path("C:/Users", Sys.getenv("USERNAME"),
-                  "Documents", "baseMCR/code")
+                  "Documents", "GitHub", "CreditDesmat")
 source(file.path(root, "built", "sicor_per_car.R"))
 
 # ============================================================================
@@ -73,7 +73,7 @@ source(file.path(root, "built", "sicor_per_car.R"))
 # OUTPUT: output/long/credit_long_municipal.csv
 #         output/long/credit_long_municipal.xlsx
 root <- file.path("C:/Users", Sys.getenv("USERNAME"),
-                  "Documents", "baseMCR/code")
+                  "Documents", "GitHub", "CreditDesmat")
 source(file.path(root, "r2c", "4_municipal_long_output.R"))
 
 # ============================================================================
@@ -84,7 +84,7 @@ source(file.path(root, "r2c", "4_municipal_long_output.R"))
 #         raw/dados_car_brasil.csv
 # OUTPUT: tabelas Excel (secao 1 a 9) + graficos PNG + CSVs auxiliares
 root <- file.path("C:/Users", Sys.getenv("USERNAME"),
-                  "Documents", "baseMCR/code")
+                  "Documents", "GitHub", "CreditDesmat")
 source(file.path(root, "desciptive.R"))
 
 # ============================================================================
