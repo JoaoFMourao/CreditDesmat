@@ -71,11 +71,11 @@ dim_choices <- c(
   "Status CAR"             = "status_car",
   "Bioma dominante"        = "biome_dominante",
   "Faixa de modulos fiscais" = "faixa_mf",
-  "Tipo de pessoa"         = "cd_tipo_pessoa",
+  "Tipo de pessoa"         = "cd_categ_emitente",
   "Fonte de recurso"       = "cd_fonte_recurso",
   "Programa"               = "cd_programa",
   "Subprograma"            = "cd_subprograma",
-  "Modalidade"             = "cd_modalidade",
+  "Modalidade"             = "cd_empreendimento",
   "Programa/Fonte"         = "programa_fonte"
 )
 
@@ -91,7 +91,7 @@ filter_panel <- function() {
                    choices = filter_choices("faixa_mf"),
                    selected = NULL, multiple = TRUE),
     selectizeInput("tipo_pessoa", "Tipo de pessoa (F/J)",
-                   choices = filter_choices("cd_tipo_pessoa"),
+                   choices = filter_choices("cd_categ_emitente"),
                    selected = NULL, multiple = TRUE),
     selectizeInput("fonte", "Fonte de recurso",
                    choices = filter_choices("cd_fonte_recurso"),
@@ -103,10 +103,10 @@ filter_panel <- function() {
                    choices = filter_choices("cd_subprograma"),
                    selected = NULL, multiple = TRUE),
     selectizeInput("modalidade", "Modalidade",
-                   choices = filter_choices("cd_modalidade"),
+                   choices = filter_choices("cd_empreendimento"),
                    selected = NULL, multiple = TRUE),
     selectizeInput("municipio", "Municipio (codigo IBGE)",
-                   choices = filter_choices("cd_municipio_ibge_cc"),
+                   choices = filter_choices("cd_ibge_municipio"),
                    selected = NULL, multiple = TRUE,
                    options = list(maxOptions = 6000))
   )
@@ -159,12 +159,12 @@ server <- function(input, output, session) {
     if (length(input$status_car))   d <- d[status_car        %in% input$status_car]
     if (length(input$biome))        d <- d[biome_dominante   %in% input$biome]
     if (length(input$faixa_mf))     d <- d[faixa_mf          %in% input$faixa_mf]
-    if (length(input$tipo_pessoa))  d <- d[cd_tipo_pessoa    %in% input$tipo_pessoa]
+    if (length(input$tipo_pessoa))  d <- d[cd_categ_emitente    %in% input$tipo_pessoa]
     if (length(input$fonte))        d <- d[cd_fonte_recurso  %in% input$fonte]
     if (length(input$programa))     d <- d[cd_programa       %in% input$programa]
     if (length(input$subprograma))  d <- d[cd_subprograma    %in% input$subprograma]
-    if (length(input$modalidade))   d <- d[cd_modalidade     %in% input$modalidade]
-    if (length(input$municipio))    d <- d[cd_municipio_ibge_cc %in% input$municipio]
+    if (length(input$modalidade))   d <- d[cd_empreendimento     %in% input$modalidade]
+    if (length(input$municipio))    d <- d[cd_ibge_municipio %in% input$municipio]
 
     d
   })

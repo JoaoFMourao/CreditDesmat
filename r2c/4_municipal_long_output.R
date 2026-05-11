@@ -122,10 +122,10 @@ df <- df %>%
 
 # AGREGACAO LONG --------------------------------------------------------------
 group_keys <- c(
-  "ano_safra", "cd_municipio_ibge_cc", "biome_dominante",
+  "ano_safra", "cd_ibge_municipio", "biome_dominante",
   "status_car", "faixa_mf",
-  "cd_tipo_pessoa",
-  "cd_fonte_recurso", "cd_programa", "cd_subprograma", "cd_modalidade",
+  "cd_fonte_recurso", "cd_programa", "cd_subprograma",
+  "cd_empreendimento", "cd_categ_emitente",
   "programa_fonte"
 )
 
@@ -138,7 +138,7 @@ long_municipal <- df %>%
     desmat_ha_proxy        = sum(desmat_ha_proxy,      na.rm = TRUE),
     .groups = "drop"
   ) %>%
-  arrange(ano_safra, cd_municipio_ibge_cc)
+  arrange(ano_safra, cd_ibge_municipio)
 
 
 # EXPORT ----------------------------------------------------------------------

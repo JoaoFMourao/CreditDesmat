@@ -66,21 +66,17 @@ df <- readRDS(file.path(root, "clean", "sicor_main_2018_2026_basic_complement.Rd
 ##       cd_tipo_pessoa
 ##   - localizacao (cd_municipio_ibge_cc) -- vem do complemento basico
 ##   - flag is_basic (esta no complemento basico?)
-## Colunas opcionais (nome pode variar entre versoes do SICOR):
-cols_opcionais <- c("cd_fonte_recurso", "cd_programa", "cd_subprograma",
-                    "cd_modalidade", "cd_tipo_pessoa", "cd_municipio_ibge_cc")
-
-cols_ausentes <- setdiff(cols_opcionais, names(df))
-if (length(cols_ausentes) > 0) {
-  message("[AVISO] Colunas nao encontradas na base SICOR: ",
-          paste(cols_ausentes, collapse = ", "),
-          "\nVerifique os nomes reais com: grep('modal|prog|pessoa|municipio|fonte', names(df), value=TRUE, ignore.case=TRUE)")
-}
-
+## Colunas selecionadas (nomes verificados na base):
+## - cd_modalidade e cd_tipo_pessoa NAO existem no arquivo principal do SICOR;
+##   modalidade/custeio-investimento pode ser derivada de cd_empreendimento
+##   ou cd_categ_emitente; tipo de pessoa (F/J) vem de tabela de beneficiarios.
+## - municipio: nome correto e' cd_ibge_municipio (nao cd_municipio_ibge_cc)
 df <- df %>%
   select(
     ref_bacen, nu_ordem, ano_base,
-    any_of(cols_opcionais),
+    cd_fonte_recurso, cd_programa, cd_subprograma,
+    cd_empreendimento, cd_categ_emitente,
+    cd_ibge_municipio,
     vl_parc_credito, vl_parc_credito_real,
     ano, mes, ano_safra,
     is_basic
