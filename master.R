@@ -41,7 +41,7 @@ file.edit(file.path(root, "r2c", "2_merge_comp_basic.R"))
 source(file.path(root, "r2c", "2_merge_comp_basic.R"))
 
 # ============================================================================
-# 3) CRUZAMENTO PRODES x CAR (antigo INPEs_exersice.R)
+# 3) CRUZAMENTO PRODES x CAR (antigo INPEs_exersice.R) #2.107201 hours 
 # ============================================================================
 # INPUT:  raw/lista_mcr_biomas_VF.gdb   (atualizado mai/2026 - SharePoint MMA)
 #         raw/prodes_mcr.gdb
