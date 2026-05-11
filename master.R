@@ -37,6 +37,7 @@ source(file.path(root, "r2c", "1_prepare_sicor_main.R"))
 # OUTPUT: clean/sicor_main_2018_2026_basic_complement.Rds
 root <- file.path("C:/Users", Sys.getenv("USERNAME"),
                   "Documents", "GitHub", "CreditDesmat")
+file.edit(file.path(root, "r2c", "2_merge_comp_basic.R"))
 source(file.path(root, "r2c", "2_merge_comp_basic.R"))
 
 # ============================================================================
@@ -49,10 +50,12 @@ source(file.path(root, "r2c", "2_merge_comp_basic.R"))
 #         output/INPEs_exercise/audit_desmat_per_car_resumo.csv  <- item 2
 root <- file.path("C:/Users", Sys.getenv("USERNAME"),
                   "Documents", "GitHub", "CreditDesmat")
+
+file.edit(file.path(root, "r2c", "3_cross_prodes_car.R"))
 source(file.path(root, "r2c", "3_cross_prodes_car.R"))
 
 # ============================================================================
-# 4) MERGE SICOR x CAR/ASV/MONITORAMENTO
+# 4) MERGE SICOR x CAR/ASV/MONITORAMENTO  tempo total: 3.293324 hours 
 # ============================================================================
 # INPUT:  clean/sicor_main_2018_2026_basic_complement.Rds
 #         raw/sicor/complementos/SICOR_PROPRIEDADES.gz
@@ -63,10 +66,12 @@ source(file.path(root, "r2c", "3_cross_prodes_car.R"))
 #         built/properties_asv.Rds
 root <- file.path("C:/Users", Sys.getenv("USERNAME"),
                   "Documents", "GitHub", "CreditDesmat")
+file.edit(file.path(root, "built", "sicor_per_car.R"))
+
 source(file.path(root, "built", "sicor_per_car.R"))
 
 # ============================================================================
-# 5) OUTPUT MUNICIPAL LONG (item 4 da revisao)
+# 5) OUTPUT MUNICIPAL LONG (item 4 da revisao) tempo total: 6.980845 hours 
 # ============================================================================
 # INPUT:  built/credit_asv.Rds
 #         built/properties_asv.Rds
@@ -91,7 +96,7 @@ source(file.path(root, "desciptive.R"))
 # 7) (OPCIONAL) DASHBOARD SHINY
 # ============================================================================
 # Para subir o dashboard interativo:
-#   shiny::runApp(file.path(root, "shiny"))
+shiny::runApp(file.path(root, "shiny"))
 # Por padrao le o CSV gerado no passo 5; pode ser sobrescrito via env var
 # CREDITDESMAT_ROOT.
 
