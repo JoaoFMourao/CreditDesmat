@@ -99,42 +99,16 @@ prodes_all <- bind_rows(prodes_list) %>%
 
 # DATA HANDLING ----------------------------------------------------------------
 
-## CARs que aparecem em mais de um layer de bioma (ex: borda Cerrado/Amazonia):
-## agregamos todos os biomas e usamos o criterio mais restritivo (menor limiar).
-## Isso preserva a informacao de CARs multi-bioma que distinct() descartaria.
-biome_info <- lista_mcr %>%
-  as_tibble() %>%
-  select(cod_imovel, criterio_aplicado) %>%
-  distinct() %>%
-  mutate(
-    threshold_bioma = case_when(
-      criterio_aplicado == "AMAZÔNIA"                                    ~ 6.25,
-      str_detect(criterio_aplicado, "CAATINGA|PAMPA|MATA ATLÂNTICA")     ~ 2,
-      str_detect(criterio_aplicado, "CERRADO|PANTANAL")                  ~ 5,
-      TRUE                                                               ~ NA_real_
-    )
-  ) %>%
-  group_by(cod_imovel) %>%
-  summarise(
-    biome        = paste(sort(unique(criterio_aplicado)), collapse = "; "),
-    criterio_num = min(threshold_bioma, na.rm = TRUE),
-    n_biomas     = n_distinct(criterio_aplicado),
-    .groups = "drop"
-  ) %>%
-  mutate(criterio_num = ifelse(is.infinite(criterio_num), NA_real_, criterio_num))
-
-## Deduplica geometria (1 registro por CAR) e enriquece com info de bioma
+## remove CARs duplicados na base CAR (mesmo cod_imovel em mais de um layer)
 lista_mcr <- lista_mcr %>%
-  distinct(cod_imovel, .keep_all = TRUE) %>%
-  select(-criterio_aplicado) %>%
-  left_join(biome_info, by = "cod_imovel")
+  distinct(cod_imovel, .keep_all = TRUE)
 
 ## seleciona variaveis e filtra status valido
 # - status_imo == "SU"        => imovel suspenso, desconsidera
 # - condicao "Cancelado..."   => CAR cancelado por decisao administrativa
 impacted.properties_org <- lista_mcr %>%
   select(cod_imovel, soma_desmat, dentro_criterio, status_imo,
-         biome, criterio_num, n_biomas, tipo_imove, uf, municipio,
+         criterio_aplicado, tipo_imove, uf, municipio,
          cod_munici, condicao, area_total_ha, m_fiscal) %>%
   filter(
     status_imo != "SU",
@@ -169,7 +143,7 @@ cat("[AUDIT] tempo de re-intersecao:",
 
 audit_df <- impacted.properties_org %>%
   as_tibble() %>%
-  select(cod_imovel, uf, municipio, biome,
+  select(cod_imovel, uf, municipio, biome = criterio_aplicado,
          soma_desmat_original = soma_desmat) %>%
   left_join(audit_calc, by = "cod_imovel") %>%
   mutate(
@@ -251,12 +225,19 @@ changedImpact <- impacted.properties_org %>%
   left_join(bordaProdes, by = "cod_imovel") %>%
   mutate(
     desmatBorda_ha = ifelse(is.na(desmatBorda_ha), 0, desmatBorda_ha),
-    desmatNew      = soma_desmat - desmatBorda_ha,
+    desmatNew      = soma_desmat - desmatBorda_ha
+  ) %>%
+  mutate(
+    biome = criterio_aplicado,
 
-    # criterio_num: limiar em ha, ja e o mais restritivo para CARs multi-bioma
-    # (ex: CAR em Cerrado+Amazonia usa 5ha em vez de 6.25ha)
+    criterio_aplicado = case_when(
+      criterio_aplicado == "AMAZÔNIA" ~ 6.25,
+      str_detect(criterio_aplicado, "CAATINGA|PAMPA|MATA ATLÂNTICA") ~ 2,
+      str_detect(criterio_aplicado, "CERRADO|PANTANAL") ~ 5
+    ),
+
     criterio_new = ifelse(
-      desmatNew < criterio_num,
+      desmatNew < criterio_aplicado,
       "Salvo pela borda",
       "Apresente ASV"
     )
