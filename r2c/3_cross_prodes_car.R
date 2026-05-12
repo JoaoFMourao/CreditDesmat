@@ -52,9 +52,26 @@ library(stringr)
 library(ggplot2)
 library(purrr)
 library(readr)
+library(future)
+library(future.apply)
 
 # s2 desligado: evita falhas em st_intersection com geometrias grandes
 sf::sf_use_s2(FALSE)
+
+## Paralelizacao -----------------------------------------------------------
+## Os gargalos sao st_intersection(CAR, PRODES) (audit) e
+## st_intersection(borda_60m, PRODES). Sao "embaracosamente paralelos" no eixo
+## dos CARs (cada CAR pode ser intersectado independentemente). Aqui montamos
+## um plano future com N-2 workers; cada worker recebe uma copia de
+## prodes_all -- entao o consumo de memoria escala com n_workers_par.
+## Ajuste para baixo se a maquina tiver menos RAM.
+n_workers_par <- max(1L, parallel::detectCores() - 2L)
+plan(multisession, workers = n_workers_par)
+
+# permite serializar objetos grandes (prodes_all pode ter alguns GB)
+options(future.globals.maxSize = 8 * 1024^3)
+
+cat("[PAR] workers configurados:", n_workers_par, "\n")
 
 ## paths --------------------------------------------------------------------
 input  <- file.path("C:/Users", Sys.getenv("USERNAME"),
@@ -79,18 +96,20 @@ layers_gdb_2 <- st_layers(gdb_2)
 print(layers_gdb_1)
 print(layers_gdb_2$name)
 
-## CAR: empilha todos os layers de bioma e reprojeta
-lista_mcr <- lapply(layers_gdb_1$name, function(x) {
-  st_read(dsn = gdb_1, layer = x, quiet = FALSE)
-}) %>%
+## CAR: empilha todos os layers de bioma em paralelo e reprojeta
+lista_mcr <- future_lapply(layers_gdb_1$name, function(x) {
+  sf::sf_use_s2(FALSE)
+  sf::st_read(dsn = gdb_1, layer = x, quiet = TRUE)
+}, future.seed = TRUE) %>%
   bind_rows() %>%
   st_transform(102033) %>%
   st_make_valid()
 
-## PRODES: empilha todos os layers (anos) e reprojeta
-prodes_list <- lapply(layers_gdb_2$name, function(x) {
-  st_read(dsn = gdb_2, layer = x, quiet = FALSE)
-})
+## PRODES: empilha todos os layers (anos) em paralelo e reprojeta
+prodes_list <- future_lapply(layers_gdb_2$name, function(x) {
+  sf::sf_use_s2(FALSE)
+  sf::st_read(dsn = gdb_2, layer = x, quiet = TRUE)
+}, future.seed = TRUE)
 
 prodes_all <- bind_rows(prodes_list) %>%
   st_transform(102033) %>%
@@ -128,15 +147,28 @@ impacted.properties_org <- lista_mcr %>%
 
 audit.strt <- Sys.time()
 
-audit_calc <- impacted.properties_org %>%
-  st_intersection(prodes_all %>% select(Shape)) %>%
-  mutate(area_ha = as.numeric(st_area(Shape)) / 10000) %>%
-  as_tibble() %>%
-  group_by(cod_imovel) %>%
-  summarise(
-    desmat_calc_ha = sum(area_ha, na.rm = TRUE),
-    .groups = "drop"
-  )
+# Quebra os CARs em chunks (2-4 por worker p/ balancear carga) e roda
+# st_intersection em paralelo. Cada cod_imovel aparece em um unico chunk,
+# entao bind_rows ja produz 1 linha por CAR (sem necessidade de re-agregar).
+n_chunks_audit <- max(n_workers_par * 3L, 8L)
+chunks_audit <- split(
+  impacted.properties_org,
+  cut(seq_len(nrow(impacted.properties_org)),
+      breaks = n_chunks_audit, labels = FALSE)
+)
+
+audit_calc_list <- future_lapply(chunks_audit, function(chunk) {
+  sf::sf_use_s2(FALSE)
+  chunk %>%
+    sf::st_intersection(prodes_all %>% dplyr::select(Shape)) %>%
+    dplyr::mutate(area_ha = as.numeric(sf::st_area(Shape)) / 10000) %>%
+    dplyr::as_tibble() %>%
+    dplyr::group_by(cod_imovel) %>%
+    dplyr::summarise(desmat_calc_ha = sum(area_ha, na.rm = TRUE),
+                     .groups = "drop")
+}, future.seed = TRUE)
+
+audit_calc <- bind_rows(audit_calc_list)
 
 cat("[AUDIT] tempo de re-intersecao:",
     format(Sys.time() - audit.strt), "\n")
@@ -188,26 +220,52 @@ print(audit_resumo)
 #   borda = imovel - buffer(imovel, -60)
 # e cruzamos a borda com PRODES para descontar essa parcela do total.
 
-borda_60m <- impacted.properties_org %>%
-  mutate(
-    Shape = map2(Shape, st_buffer(Shape, -60), st_difference) %>%
-      st_sfc(crs = st_crs(impacted.properties_org))
-  )
+# Calcula a faixa de 60m em paralelo: o map2 row-wise (difference de cada
+# poligono com seu proprio buffer interno) eh caro, entao chunkamos.
+n_chunks_borda <- max(n_workers_par * 3L, 8L)
+chunks_imp <- split(
+  impacted.properties_org,
+  cut(seq_len(nrow(impacted.properties_org)),
+      breaks = n_chunks_borda, labels = FALSE)
+)
 
-## cruza PRODES com a faixa de 60m (borda)
+borda_strt <- Sys.time()
+
+borda_60m <- future_lapply(chunks_imp, function(chunk) {
+  sf::sf_use_s2(FALSE)
+  chunk %>%
+    dplyr::mutate(
+      Shape = purrr::map2(
+        Shape, sf::st_buffer(Shape, -60), sf::st_difference
+      ) %>% sf::st_sfc(crs = sf::st_crs(chunk))
+    )
+}, future.seed = TRUE) %>%
+  do.call(rbind, .)
+
+cat("[BORDA] tempo do buffer/difference:",
+    format(Sys.time() - borda_strt), "\n")
+
+## cruza PRODES com a faixa de 60m (borda), tambem em paralelo
 str.date <- Sys.time()
 
-bordaProdes <- borda_60m %>%
-  st_intersection(prodes_all) %>%
-  mutate(
-    area_ha_naBorda = as.numeric(st_area(Shape)) / 10000
-  ) %>%
-  as_tibble() %>%
-  group_by(cod_imovel) %>%
-  summarise(
-    desmatBorda_ha = sum(area_ha_naBorda, na.rm = TRUE),
-    .groups = "drop"
-  )
+chunks_borda <- split(
+  borda_60m,
+  cut(seq_len(nrow(borda_60m)),
+      breaks = n_chunks_borda, labels = FALSE)
+)
+
+bordaProdes_list <- future_lapply(chunks_borda, function(chunk) {
+  sf::sf_use_s2(FALSE)
+  chunk %>%
+    sf::st_intersection(prodes_all) %>%
+    dplyr::mutate(area_ha_naBorda = as.numeric(sf::st_area(Shape)) / 10000) %>%
+    dplyr::as_tibble() %>%
+    dplyr::group_by(cod_imovel) %>%
+    dplyr::summarise(desmatBorda_ha = sum(area_ha_naBorda, na.rm = TRUE),
+                     .groups = "drop")
+}, future.seed = TRUE)
+
+bordaProdes <- bind_rows(bordaProdes_list)
 
 cat("[BORDA] tempo de cruzamento:",
     format(Sys.time() - str.date), "\n")
@@ -249,5 +307,8 @@ saveRDS(
   changedImpact,
   file.path(output, "changedImpact.rds")
 )
+
+# encerra workers paralelos (libera RAM)
+plan(sequential)
 
 cat("[OK] tempo total:", format(Sys.time() - real.strt.time), "\n")
