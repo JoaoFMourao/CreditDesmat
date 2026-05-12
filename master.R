@@ -77,9 +77,9 @@ source(file.path(root, "built", "sicor_per_car.R"))
 #         built/properties_asv.Rds
 # OUTPUT: output/long/credit_long_municipal.csv
 #         output/long/credit_long_municipal.xlsx
-root <- file.path("C:/Users", Sys.getenv("USERNAME"),
-                  "Documents", "GitHub", "CreditDesmat")
-source(file.path(root, "r2c", "4_municipal_long_output.R"))
+# root <- file.path("C:/Users", Sys.getenv("USERNAME"),
+#                   "Documents", "GitHub", "CreditDesmat")
+# source(file.path(root, "r2c", "4_municipal_long_output.R"))
 
 # ============================================================================
 # 6) ANALISE DESCRITIVA FINAL
