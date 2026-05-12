@@ -115,16 +115,17 @@ properties <- properties %>%
   ) %>%
   mutate(tookCredit = "Tomou Credito")
 
-## asvCar: limpa cod_imovel (a base CAR usa hifens, properties nao) e marca
-## que o CAR esta "na base" (i.e., cruzou com PRODES nesta rodada)
+## asvCar: limpa cod_imovel (a base CAR usa hifens, properties nao).
+## Todo CAR em asvCar (= lista_mcr) precisa apresentar ASV; portanto a propria
+## marca `apresenteASV == "Apresente ASV"` ja identifica "CAR na base" no
+## cruzamento com SICOR (nao mantemos um in_base_car redundante).
 asvCar <- asvCar %>%
   mutate(
     cod_imovel    = str_remove_all(cod_imovel, "-"),
-    apresenteASV  = "Apresente ASV",
-    in_base_car   = 1L
+    apresenteASV  = "Apresente ASV"
   ) %>%
   select(cod_imovel, soma_desmat, uf, biome, criterio_new,
-         apresenteASV, area_total_ha, m_fiscal, in_base_car) %>%
+         apresenteASV, area_total_ha, m_fiscal) %>%
   mutate(quinzeMf = ifelse(m_fiscal >= 15, 1, 0)) %>%
   distinct(cod_imovel, .keep_all = TRUE)
 
@@ -153,27 +154,25 @@ df <- df %>%
 # Para cada (ref_bacen, nu_ordem) contamos:
 #   n_car_total    : numero de linhas em properties (qualquer cod_imovel)
 #   n_car_id       : numero de CARs informados (cod_imovel != "-1")
-#   n_car_in_base  : numero de CARs que cruzaram com lista_mcr
-#   n_apresenteASV : numero de CARs que cairam na regra "Apresente ASV"
+#   n_car_in_base  : numero de CARs que cruzaram com lista_mcr (== asv_flag)
 #   max_m_fiscal   : maior modulo fiscal entre os CARs do contrato
 #   salvoBorda     : 1 se TODOS os CARs do contrato foram salvos pela borda
 
 df_asv <- properties %>%
   filter(ref_bacen %in% df$ref_bacen) %>%
   select(ref_bacen, nu_ordem, apresenteASV, cod_imovel, criterio_new,
-         quinzeMf, in_base_car, m_fiscal) %>%
+         quinzeMf, m_fiscal) %>%
   mutate(
+    # asv_flag == 1 sse o CAR esta em asvCar; ele tambem indica "CAR na base"
     asv_flag    = ifelse(!is.na(apresenteASV) & apresenteASV == "Apresente ASV", 1, 0),
     haCAR       = ifelse(cod_imovel == "-1", 0, 1),
-    in_base_car = ifelse(is.na(in_base_car), 0, in_base_car),
     salvoBorda  = ifelse(!is.na(criterio_new) & criterio_new == "Salvo pela borda", 1, 0)
   ) %>%
   group_by(ref_bacen, nu_ordem) %>%
   summarise(
     n_car_total    = n(),
     n_car_id       = sum(haCAR),
-    n_car_in_base  = sum(in_base_car),
-    n_apresenteASV = sum(asv_flag),
+    n_car_in_base  = sum(asv_flag),
     quinzeMf       = sum(quinzeMf, na.rm = TRUE),
     max_m_fiscal   = suppressWarnings(max(m_fiscal, na.rm = TRUE)),
     salvoBorda     = ifelse(n_car_id == sum(salvoBorda), 1, 0),
@@ -200,13 +199,15 @@ df <- df %>%
       n_car_in_base > 0    ~ "CAR na base"
     ),
 
-    # mantem o rotulo original "apresenteASV" para retrocompat com desciptive.R
+    # mantem o rotulo original "apresenteASV" para retrocompat com desciptive.R.
+    # Para "CAR na base" todos os CARs em asvCar precisam apresentar ASV --
+    # nao existe ramo "Sem desmatamento" porque n_car_in_base > 0 implica que
+    # pelo menos um CAR esta em lista_mcr e portanto precisa de ASV.
     apresenteASV = case_when(
       status_car == "Sigiloso"            ~ "Dado sigiloso",
       status_car == "CAR nao informado"   ~ "Sem CAR associado",
       status_car == "CAR fora da base"    ~ "CAR fora da base",
-      status_car == "CAR na base" & n_apresenteASV > 0  ~ "Apresente ASV",
-      status_car == "CAR na base" & n_apresenteASV == 0 ~ "Sem desmatamento"
+      status_car == "CAR na base"         ~ "Apresente ASV"
     ),
 
     # faixa_mf: somente quando o CAR esta na base (caso contrario nao temos MF)
