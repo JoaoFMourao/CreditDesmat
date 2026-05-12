@@ -24,11 +24,12 @@
 ################################################################################
 
 # SETUP ------------------------------------------------------------------------
+# Versao paralela: cada ano e' lido uma unica vez (a versao antiga lia cada
+# .gz duas vezes -- uma para inspecionar classes e outra para a base final)
+# e os arquivos sao processados em paralelo via future.apply.
 rm(list=ls())
 gc()
 strt.time <- Sys.time()
-
-# source("_functions/GroundhogLibraries.R")
 
 caminho <- file.path("C:/Users", Sys.getenv("USERNAME"),
                      "Documents", "baseMCR/dados/raw/sicor")
@@ -39,93 +40,75 @@ library(stringr)
 library(lubridate)
 library(bit64)
 library(janitor)
-
-# pkgs <- c('tidyverse', 'lubridate', 'stringr', 'janitor', 'bit64')
-# 
-# groundhogLibraries(pkgs, date = "2024-02-08", tolerate.R.version='4.3.3')
+library(future)
+library(future.apply)
 
 # Remove Scientific Notation
 options(scipen = 999)
 
+# Plano paralelo: usa N-2 workers; ajuste se a maquina tiver RAM limitada.
+n_workers_par <- max(1L, parallel::detectCores() - 2L)
+plan(multisession, workers = n_workers_par)
+options(future.globals.maxSize = 4 * 1024^3)
+
+cat("[PAR] workers configurados:", n_workers_par, "\n")
+
 
 #  Loading and basic cleaning each year main file, joining together ------------
-# Read each year file
 years <- 2018:2026
 list_bases <- list.files(caminho, full.names = TRUE,
                          pattern = ".gz")
 
+# Le cada arquivo ano UMA UNICA VEZ em paralelo e devolve:
+# - df_year: data.frame com a coluna ANO_BASE ja adicionada
+# - var_check_year: tibble (colname, classes) usada na auditoria
+read_year <- function(i) {
+  df <- read.delim(list_bases[[i]],
+                   sep = ";",
+                   header = TRUE,
+                   encoding = "UTF-8")
 
+  vc <- tibble::tibble(
+    colname = names(df),
+    classes = vapply(df, function(x) paste(class(x), collapse = ", "),
+                     FUN.VALUE = character(1))
+  )
 
-# Name and class check of variables over database years
+  df$ANO_BASE <- years[i]
+
+  list(df = df, var_check = vc)
+}
+
+read_results <- future_lapply(seq_along(list_bases), read_year,
+                              future.seed = TRUE)
+
+# Consolida o auditoria de classes (1 coluna por ano)
 var_check <- tibble::tibble(colname = character())
-
-for (i in seq_along(list_bases)) {
-  
-  df <- read.delim(list_bases[[i]],
-                   sep = ";",
-                   header = TRUE,
-                   encoding = "UTF-8")
-  
-  # Criar tibble com nome e classe de cada coluna
-  x <- df %>%
-    imap_dfr(~ tibble(colname = .y, classes = class(.x) %>% str_c(collapse = ", ")))
-  
-  # Juntar com var_check
-  var_check <- full_join(var_check, x, by = 'colname')
-  
-  # Renomear a última coluna para o ano correspondente
-  d <- min(years) - 1 + i
-  colnames(var_check)[ncol(var_check)] <- as.character(d)
-  
-  rm(x, d)
+for (i in seq_along(read_results)) {
+  vc <- read_results[[i]]$var_check
+  colnames(vc)[2] <- as.character(years[i])
+  var_check <- dplyr::full_join(var_check, vc, by = "colname")
 }
 
-# Create database year variable
-list_df <- list()
-
-ano_inicial  <- min(years)
-
-# Loop para ler e adicionar coluna ANO_BASE
-for (i in seq_along(list_bases)) {
-  
-  df <- read.delim(list_bases[[i]],
-                   sep = ";",
-                   header = TRUE,
-                   encoding = "UTF-8")
-  
-  # Adiciona a coluna ANO_BASE
-  df <- df %>%
-    mutate(ANO_BASE = years[i])
-  
-  # Substitui na lista
-  list_df[[i]] <- df
-}
-
-#check if class variables are constant
-aux <- lapply(list_df[[1]], class) 
-for (i in 2:length(list_df)) {
- 
-aux2 <-  (lapply(list_df[[i]], class) )
-
-aux <- bind_rows(aux,aux2)
-  }
+# Lista de dfs anuais
+list_df <- lapply(read_results, `[[`, "df")
+rm(read_results)
+gc()
 
 # Variable "CD_CONTRATO_STN" is character in 2021-2023
 # Changing to integer64 for compatibility
-for (i in 1:length(list_df)) {
-  list_df[[i]] <- list_df[[i]] %>%
-    mutate(x = as.integer64(CD_CONTRATO_STN)) %>%
-    mutate(x = na_if(x, is.na(CD_CONTRATO_STN) == T)) %>%
+list_df <- lapply(list_df, function(x) {
+  x %>%
+    mutate(tmp_stn = as.integer64(CD_CONTRATO_STN)) %>%
+    mutate(tmp_stn = na_if(tmp_stn, is.na(CD_CONTRATO_STN))) %>%
     select(-CD_CONTRATO_STN) %>%
-    rename(CD_CONTRATO_STN = x)
-}
-
-
+    rename(CD_CONTRATO_STN = tmp_stn)
+})
 
 # Joining all years together
 df <- do.call(bind_rows, list_df)
-
-df
+rm(list_df)
+gc()
 
 # Clean names
 df <- df %>%
@@ -145,7 +128,7 @@ if(!dir.exists(output)){
   dir.create(output)
 }
 
-saveRDS(df, file.path(output, 
+saveRDS(df, file.path(output,
                       paste0(
                         "sicor_main_",
                         min(years),
@@ -155,9 +138,8 @@ saveRDS(df, file.path(output,
                       )
         )
 
-# # Clean memory
-# rm(list=ls())
-# gc()
+# encerra workers paralelos
+plan(sequential)
 
 Sys.time() - strt.time
 

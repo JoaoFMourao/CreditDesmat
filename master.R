@@ -95,10 +95,13 @@ source(file.path(root, "desciptive.R"))
 # ============================================================================
 # 7) (OPCIONAL) DASHBOARD SHINY
 # ============================================================================
-# Para subir o dashboard interativo:
-shiny::runApp(file.path(root, "shiny"))
-# Por padrao le o CSV gerado no passo 5; pode ser sobrescrito via env var
-# CREDITDESMAT_ROOT.
+
+# Atencao: os scripts anteriores usam rm(list=ls()) e podem ter sobrescrito a
+# variavel `root`. Por isso redefinimos aqui antes de chamar runApp.
+code_root <- file.path("C:/Users", Sys.getenv("USERNAME"),
+                       "Documents", "GitHub", "CreditDesmat")
+# Descomente a linha abaixo para abrir o dashboard:
+# shiny::runApp(file.path(code_root, "shiny"))
 
 # ============================================================================
 # FIM
